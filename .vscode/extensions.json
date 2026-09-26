@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "arktypeio.arkdark",
+    "oxc.oxc-vscode",
+    "vitest.explorer",
+    "aaa-lt.charmed-nest-icons",
+    "EditorConfig.EditorConfig",
+    "imgildev.vscode-nestjs-generator"
+  ],
+  "unwantedRecommendations": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+}

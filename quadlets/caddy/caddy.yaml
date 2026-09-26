@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: caddy
+  labels:
+    app: caddy
+spec:
+  restartPolicy: Always
+  containers:
+    - name: caddy
+      image: docker.io/library/caddy:2-alpine
+      env:
+        - name: DOMAIN
+          value: localhost
+        - name: UPSTREAM
+          value: localhost:3000
+      volumeMounts:
+        - name: conf
+          mountPath: /etc/caddy
+          readOnly: true
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /config
+  volumes:
+    - name: conf
+      hostPath:
+        path: __APP_DIR__/conf
+        type: Directory
+    - name: data
+      persistentVolumeClaim:
+        claimName: caddy-data
+    - name: config
+      persistentVolumeClaim:
+        claimName: caddy-config

@@ -1,0 +1,12 @@
+[Unit]
+Description=PostgreSQL
+
+[Kube]
+Yaml=postgres.yaml
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

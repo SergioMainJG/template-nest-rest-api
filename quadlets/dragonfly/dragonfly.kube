@@ -1,0 +1,12 @@
+[Unit]
+Description=Dragonfly (Redis compatible)
+
+[Kube]
+Yaml=dragonfly.yaml
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      bun-version:
+        value: ${{ jobs.setup.outputs.bun-version }}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      bun-version: ${{ steps.versions.outputs.bun-version }}
+      postgres-image: ${{ steps.versions.outputs.postgres-image }}
+      cache-image: ${{ steps.versions.outputs.cache-image }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: versions
+        run: |
+          bun_version="$(jq -r '.packageManager // "" | sub("^bun@"; "")' package.json)"
+          postgres_image="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' quadlets/postgres/postgres.yaml | head -n1)"
+          cache_image="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' quadlets/dragonfly/dragonfly.yaml | head -n1)"
+          {
+            echo "bun-version=${bun_version:-latest}"
+            echo "postgres-image=${postgres_image:-docker.io/library/postgres:alpine}"
+            echo "cache-image=${cache_image:-docker.io/library/redis:alpine}"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  quality:
+    name: Formato, lint y typecheck
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ needs.setup.outputs.bun-version }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run check
+
+      - run: bun run typecheck
+
+  test:
+    name: Tests (unit, integración, e2e)
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ needs.setup.outputs.bun-version }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run test:all
+
+  smoke:
+    name: Migraciones y arranque contra Postgres y Redis
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: ${{ needs.setup.outputs.postgres-image }}
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      cache:
+        image: ${{ needs.setup.outputs.cache-image }}
+        ports:
+          - 6379:6379
+        options: --ulimit memlock=-1
+    env:
+      APP_NAME: ci
+      NODE_ENV: production
+      HOST: 127.0.0.1
+      PORT: "3000"
+      DOMAIN_ORIGIN: http://localhost
+      DATABASE_URL: postgres://app:app@localhost:5432/app
+      CACHE_URL: redis://localhost:6379
+      CACHE_TTL: "60000"
+      CACHE_MAX_TTL: "3600000"
+      JWT_EXPIRES_IN: 15m
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ needs.setup.outputs.bun-version }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - run: echo "JWT_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - run: bun run build
+
+      - name: Migraciones
+        run: |
+          bun dist/migrate.js
+          bun dist/migrate.js
+
+      - name: Arranque
+        run: |
+          bun dist/main.js > app.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fs "http://127.0.0.1:${PORT}/health/live" > /dev/null && exit 0
+            sleep 1
+          done
+          cat app.log
+          exit 1
+
+      - name: Endpoints
+        run: |
+          base="http://127.0.0.1:${PORT}"
+          credentials='{"email":"smoke@example.com","password":"correct-horse-battery"}'
+
+          for _ in $(seq 1 15); do
+            curl -fs "$base/health/ready" && break
+            sleep 1
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/health/ready")" = 200
+
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/json' -d "$credentials" "$base/auth/register")" = 201
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/json' -d "$credentials" "$base/auth/register")" = 409
+
+          token="$(curl -fs -H 'content-type: application/json' -d "$credentials" "$base/auth/login" | jq -r .accessToken)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "authorization: Bearer $token" "$base/users/me")" = 200
+
+      - if: failure()
+        run: cat app.log
+
+  container:
+    name: Imagen de contenedor
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          build-args: BUN_VERSION=${{ needs.setup.outputs.bun-version }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

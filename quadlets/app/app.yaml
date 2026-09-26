@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  restartPolicy: Always
+  initContainers:
+    - name: migrate
+      image: localhost/app:latest
+      imagePullPolicy: Never
+      command: ["bun", "dist/migrate.js"]
+      env:
+        - name: DATABASE_URL
+          value: postgres://app:change-me@127.0.0.1:5432/app
+  containers:
+    - name: api
+      image: localhost/app:latest
+      imagePullPolicy: Never
+      env:
+        - name: APP_NAME
+          value: app
+        - name: NODE_ENV
+          value: production
+        - name: HOST
+          value: 127.0.0.1
+        - name: PORT
+          value: "3000"
+        - name: DOMAIN_ORIGIN
+          value: https://localhost
+        - name: DATABASE_URL
+          value: postgres://app:change-me@127.0.0.1:5432/app
+        - name: CACHE_URL
+          value: redis://:change-me@127.0.0.1:6379
+        - name: CACHE_TTL
+          value: "60000"
+        - name: CACHE_MAX_TTL
+          value: "3600000"
+        - name: JWT_SECRET
+          value: change-me
+        - name: JWT_EXPIRES_IN
+          value: 15m
+      livenessProbe:
+        exec:
+          command:
+            - bun
+            - -e
+            - "const r = await fetch('http://127.0.0.1:3000/health/live'); process.exit(r.ok ? 0 : 1)"
+        initialDelaySeconds: 10
+        periodSeconds: 30

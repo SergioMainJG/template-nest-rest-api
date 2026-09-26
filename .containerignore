@@ -1,0 +1,10 @@
+.env
+.env.*
+.git
+.github
+.vscode
+coverage
+dist
+node_modules
+quadlets
+*.log

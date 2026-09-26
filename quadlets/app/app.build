@@ -1,0 +1,11 @@
+[Unit]
+Description=Imagen de la API
+
+[Build]
+ImageTag=localhost/app:latest
+File=__PROJECT_DIR__/Containerfile
+SetWorkingDirectory=__PROJECT_DIR__
+Pull=missing
+
+[Service]
+TimeoutStartSec=1800

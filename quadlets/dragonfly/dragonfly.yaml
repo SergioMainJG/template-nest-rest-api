@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dragonfly
+  labels:
+    app: dragonfly
+spec:
+  restartPolicy: Always
+  containers:
+    - name: dragonfly
+      image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+      args: ["--flagfile=/etc/dragonfly/dragonfly.conf"]
+      ports:
+        - containerPort: 6379
+          hostPort: 6379
+          hostIP: 127.0.0.1
+      volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: conf
+          mountPath: /etc/dragonfly
+          readOnly: true
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: dragonfly-data
+    - name: conf
+      hostPath:
+        path: __APP_DIR__/conf
+        type: Directory

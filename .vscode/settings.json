@@ -1,0 +1,16 @@
+{
+  "editor.quickSuggestions": {
+    "strings": "on"
+  },
+  "js/ts.preferences.autoImportSpecifierExcludeRegexes": ["^(node:)?os$"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit",
+    "source.format.oxc": "always"
+  },
+  "editor.formatOnSave": false,
+  "oxc.typeAware": true,
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "oxc.lint.run": "onType",
+  "prettier.enable": false,
+  "eslint.enable": false
+}

@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  restartPolicy: Always
+  containers:
+    - name: postgres
+      image: docker.io/library/postgres:19beta4-alpine
+      args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+      env:
+        - name: POSTGRES_USER
+          value: app
+        - name: POSTGRES_PASSWORD
+          value: change-me
+        - name: POSTGRES_DB
+          value: app
+        - name: TZ
+          value: UTC
+      ports:
+        - containerPort: 5432
+          hostPort: 5432
+          hostIP: 127.0.0.1
+      livenessProbe:
+        exec:
+          command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+        initialDelaySeconds: 15
+        periodSeconds: 30
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql
+        - name: conf
+          mountPath: /etc/postgresql
+          readOnly: true
+        - name: initdb
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: postgres-data
+    - name: conf
+      hostPath:
+        path: __APP_DIR__/conf
+        type: Directory
+    - name: initdb
+      hostPath:
+        path: __APP_DIR__/initdb
+        type: Directory

@@ -1,0 +1,16 @@
+[Unit]
+Description=API (NestJS sobre Bun)
+Requires=app-build.service postgres.service dragonfly.service
+After=app-build.service postgres.service dragonfly.service
+Wants=caddy.service
+
+[Kube]
+Yaml=app.yaml
+Network=host
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target
