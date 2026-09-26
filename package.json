@@ -1,6 +1,6 @@
 {
   "name": "template",
-  "version": "0.0.1",
+  "version": "v1.0.0",
   "private": true,
   "description": "Plantilla de API con NestJS + Fastify sobre Bun, Drizzle (PostgreSQL con Bun SQL), cache en Redis y JWT.",
   "license": "MIT",
