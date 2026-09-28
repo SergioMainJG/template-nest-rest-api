@@ -13,34 +13,24 @@ spec:
       command: ["bun", "dist/migrate.js"]
       env:
         - name: DATABASE_URL
-          value: postgres://app:change-me@127.0.0.1:5432/app
+          valueFrom:
+            secretKeyRef:
+              name: app-env
+              key: DATABASE_URL
   containers:
     - name: api
       image: localhost/app:latest
       imagePullPolicy: Never
+      envFrom:
+        - secretRef:
+            name: app-env
       env:
-        - name: APP_NAME
-          value: app
         - name: NODE_ENV
           value: production
         - name: HOST
           value: 127.0.0.1
         - name: PORT
           value: "3000"
-        - name: DOMAIN_ORIGIN
-          value: https://localhost
-        - name: DATABASE_URL
-          value: postgres://app:change-me@127.0.0.1:5432/app
-        - name: CACHE_URL
-          value: redis://:change-me@127.0.0.1:6379
-        - name: CACHE_TTL
-          value: "60000"
-        - name: CACHE_MAX_TTL
-          value: "3600000"
-        - name: JWT_SECRET
-          value: change-me
-        - name: JWT_EXPIRES_IN
-          value: 15m
       livenessProbe:
         exec:
           command:

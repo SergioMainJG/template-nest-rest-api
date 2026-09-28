@@ -22,10 +22,11 @@ cp template.env .env
 openssl rand -base64 32   # pégalo en JWT_SECRET
 ```
 
-Levanta Postgres y Dragonfly con los quadlets (Podman + systemd, rootless):
+Levanta Postgres y Dragonfly con los quadlets (Podman + systemd, rootless). Sus contraseñas salen de `DATABASE_URL` y `CACHE_URL`. Los scripts de `quadlets/` son scripts de Rust (`cargo +nightly -Zscript`), así que necesitas el toolchain nightly (`rustup toolchain install nightly`):
 
 ```bash
-./quadlets/install.sh postgres dragonfly --start
+./quadlets/sync-secrets.rs   # .env → podman secrets
+./quadlets/install.rs postgres dragonfly --start
 ```
 
 Aplica las migraciones y arranca en modo desarrollo:
@@ -42,16 +43,16 @@ bun run start:dev
 
 Todo lo específico de tu proyecto sale del `.env`: no hay nombres de app repartidos por el código.
 
-| Qué                               | Dónde                                                              |
-| --------------------------------- | ------------------------------------------------------------------ |
-| Nombre de la app                  | `APP_NAME` → logs, Swagger, `iss`/`aud` del JWT, Observe           |
-| Variables de entorno y su formato | `src/config/envs/envs.schema.ts` y `template.env`                  |
-| Límites de rate limiting          | `THROTTLERS` en `src/config/throttler/throttler-config.service.ts` |
-| Cache en memoria (LRU, TTL)       | `src/config/cache/cache-config.service.ts`                         |
-| CSP de helmet, CORS               | `src/main.setup.ts`                                                |
-| Tablas                            | `src/config/drizzle/schemas/` (exporta cada tabla en `index.ts`)   |
-| Contraseñas de la infraestructura | `quadlets/*/` (buscan `change-me`)                                 |
-| Nombre del paquete y autor        | `package.json`, `LICENSE.md`                                       |
+| Qué                               | Dónde                                                                |
+| --------------------------------- | -------------------------------------------------------------------- |
+| Nombre de la app                  | `APP_NAME` → logs, Swagger, `iss`/`aud` del JWT, Observe             |
+| Variables de entorno y su formato | `src/config/envs/envs.schema.ts` y `template.env`                    |
+| Límites de rate limiting          | `THROTTLERS` en `src/config/throttler/throttler-config.service.ts`   |
+| Cache en memoria (LRU, TTL)       | `src/config/cache/cache-config.service.ts`                           |
+| CSP de helmet, CORS               | `src/main.setup.ts`                                                  |
+| Tablas                            | `src/config/drizzle/schemas/` (exporta cada tabla en `index.ts`)     |
+| Contraseñas de la infraestructura | `DATABASE_URL` y `CACHE_URL` del `.env` (`quadlets/sync-secrets.rs`) |
+| Nombre del paquete y autor        | `package.json`, `LICENSE.md`                                         |
 
 Variables opcionales (no están en `template.env`; agrégalas solo si las usas):
 
@@ -129,14 +130,25 @@ Los tests de integración y e2e no necesitan infraestructura: usan PostgreSQL re
 | `app.kube`  | `app.service`: requiere `app-build`, `postgres` y `dragonfly`; arranca `caddy` si está instalado |
 | `app.yaml`  | Pod con un initContainer que aplica las migraciones (`bun dist/migrate.js`) y la API             |
 
-Antes de instalar, cambia en `quadlets/app/app.yaml` `JWT_SECRET` (la app no arranca con `change-me`), `APP_NAME` y `DOMAIN_ORIGIN`, y usa las mismas contraseñas que en `quadlets/postgres` y `quadlets/dragonfly`.
+Los YAML no llevan variables ni contraseñas: `quadlets/sync-secrets.rs` lee el `.env` y crea un podman secret por pod, que los YAML referencian con `envFrom`/`secretKeyRef`.
+
+| Secret          | Contenido                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `app-env`       | Las variables de `template.env` y las opcionales (`LOG_LEVEL`, `OBSERVE_*`) si están definidas |
+| `postgres-env`  | `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`, sacados de `DATABASE_URL`                |
+| `dragonfly-env` | `DFLY_requirepass`, sacado de la contraseña de `CACHE_URL`                                     |
+
+`NODE_ENV`, `HOST` y `PORT` los fija `app.yaml` (producción, `127.0.0.1:3000`); si están en el `.env` se ignoran.
 
 ```bash
-./quadlets/install.sh
+./quadlets/sync-secrets.rs      # o ./quadlets/sync-secrets.rs ruta/a/prod.env
+./quadlets/install.rs
 systemctl --user start app.service
 ```
 
-`install.sh` sustituye las rutas del repo, instala `app` al final y, con `--start`, la arranca después de sus dependencias. La API usa la red del host y escucha en `127.0.0.1:3000`; Caddy la publica en 80/443.
+Al cambiar el `.env`, vuelve a ejecutar `sync-secrets.rs` y reinicia los servicios. Postgres solo aplica `POSTGRES_PASSWORD` al crear el volumen: con datos existentes, cambia la contraseña también con `ALTER USER`.
+
+`install.rs` sustituye las rutas del repo, instala `app` al final y, con `--start`, la arranca después de sus dependencias. La API usa la red del host y escucha en `127.0.0.1:3000`; Caddy la publica en 80/443.
 
 Sin Quadlet:
 

@@ -10,13 +10,10 @@ spec:
     - name: postgres
       image: docker.io/library/postgres:19beta4-alpine
       args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+      envFrom:
+        - secretRef:
+            name: postgres-env
       env:
-        - name: POSTGRES_USER
-          value: app
-        - name: POSTGRES_PASSWORD
-          value: change-me
-        - name: POSTGRES_DB
-          value: app
         - name: TZ
           value: UTC
       ports:
